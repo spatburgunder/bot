@@ -72,6 +72,7 @@ public class MyBot extends TelegramLongPollingBot {
                 session.state = UserState.WAITING_FOR_REPORT;
                 session.userName = update.getMessage().getFrom().getUserName();
                 session.userId = update.getMessage().getFrom().getId();
+                //session.userId = update.getMessage().getFrom().get;
             }
 
             switch (session.state) {
@@ -142,12 +143,11 @@ public class MyBot extends TelegramLongPollingBot {
                     break;
 
                 case REPORT_PROCESSING:
-                    System.out.println("chat id: "+chatId);
                     sendMessage(chatId,"Спасибо, отзыв отправлен",false);
                     session.state = UserState.WAITING_FOR_START;
                     sendMessage(bossChatId,
                             "❗❗❗❗❗❗❗❗❗❗\n"
-                                    +"ОТЗЫВ ОТ ПОЛЬЗОВАТЕЛЯ "
+                                    +"Отзыв от пользователя "
                                     +session.firstName
                                     +" (@"+session.userName+"), id "+session.userId+":\n"
                                     +messageText,false);
@@ -208,7 +208,7 @@ public class MyBot extends TelegramLongPollingBot {
         }
 // update message и callback пустые
         else {
-            sendMessage(chatId, "Как ты сюда попал?",false);
+            sendMessage(chatId, "Не могу обработать такое сообщение",false);
         }
     }
 
@@ -380,7 +380,7 @@ public class MyBot extends TelegramLongPollingBot {
     }
     @Override
     public String getBotToken() {
-        return "7150754579:AAFcyPkCEVTtLmZskv0gFyifa34jD7HL6Tw";
+        return BOT_TOKEN;
     }
 
 }
