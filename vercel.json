@@ -1,7 +1,7 @@
 {
   "builds": [
     {
-      "src": "./Dockerfile",
+      "src": "./dockerfile",
       "use": "@vercel/docker",
       "config": {
         "runtime": "experimental-edge"
