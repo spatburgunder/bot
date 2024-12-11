@@ -27,12 +27,13 @@ public class MyBot extends TelegramLongPollingBot {
         PRICE_PROCESSING,
         GUEST_NAME_PROCESSING,
         PARTICIPANTS_CHOOSING,
-        WAITING_FOR_REPORT,
-        REPORT_PROCESSING
+        WAITING_FOR_FEEDBACK,
+        FEEDBACK_PROCESSING
     }
     private static class UserSession {
         private UserState state = UserState.WAITING_FOR_START;
         String firstName;
+        String lastName;
         String userName;
         Long userId;
         int totalPizzas;
@@ -68,24 +69,27 @@ public class MyBot extends TelegramLongPollingBot {
                 session.state = UserState.START_PROCESSING;
             }
 
-            if (messageText.equals("/report")){
-                session.state = UserState.WAITING_FOR_REPORT;
+            if (messageText.equals("/feedback")){
+                session.lastName = update.getMessage().getFrom().getLastName();
+                    if(session.lastName==null){session.lastName="";}
                 session.userName = update.getMessage().getFrom().getUserName();
+                    if(session.userName!=null){session.userName = "@"+session.userName;}
                 session.userId = update.getMessage().getFrom().getId();
-                //session.userId = update.getMessage().getFrom().get;
+                session.state = UserState.WAITING_FOR_FEEDBACK;
             }
 
             switch (session.state) {
                 case WAITING_FOR_START:
-                    sendMessage(chatId, "Отправь команду /start для начала работы.", true);
-                    session.messagesToDelete.add(update.getMessage().getMessageId()); // Сообщение к удалению
+                    sendMessage(chatId,
+                            "Доступные команды:\n\n"
+                            +"/start - начать новый расчет \uD83C\uDF55\n\n"
+                            +"/feedback - оставить обратную связь \uD83D\uDC8C\n\n", false);
                     break;
 
                 case START_PROCESSING:
                     sendMessage(chatId, "Сколько было пицц?", true);
                     session.state = UserState.COUNT_PROCESSING;
                     break;
-
 
                 case COUNT_PROCESSING:
                     session.messagesToDelete.add(update.getMessage().getMessageId()); // Сообщение к удалению
@@ -129,6 +133,7 @@ public class MyBot extends TelegramLongPollingBot {
                     }
                     session.participants = newParticipants; // заменяем с гостем
                     updateButtonState(chatId, session.askWhoMessageId, messageText); //обновляем клаву
+                    sendMessage(chatId,"Добавлена кнопка "+messageText+" ☝\uFE0F",true);
                     session.state = UserState.PARTICIPANTS_CHOOSING;
                     break;
 
@@ -137,19 +142,21 @@ public class MyBot extends TelegramLongPollingBot {
                     sendMessage(chatId, "Используй кнопки выше или начни заново - /start", true);
                     break;
 
-                case WAITING_FOR_REPORT:
+                case WAITING_FOR_FEEDBACK:
                     sendMessage(chatId,"Напиши, что передать боссу",false);
-                    session.state = UserState.REPORT_PROCESSING;
+                    session.state = UserState.FEEDBACK_PROCESSING;
                     break;
 
-                case REPORT_PROCESSING:
+                case FEEDBACK_PROCESSING:
                     sendMessage(chatId,"Спасибо, отзыв отправлен",false);
                     session.state = UserState.WAITING_FOR_START;
                     sendMessage(bossChatId,
                             "❗❗❗❗❗❗❗❗❗❗\n"
                                     +"Отзыв от пользователя "
-                                    +session.firstName
-                                    +" (@"+session.userName+"), id "+session.userId+":\n"
+                                    +session.firstName+" "
+                                    +session.lastName+" ("
+                                    +session.userName+"), id "
+                                    +session.userId+":\n"
                                     +messageText,false);
                     // Удаляем сессию после окончания
                     sessionMap.remove(chatId);
@@ -165,46 +172,49 @@ public class MyBot extends TelegramLongPollingBot {
             UserSession session = sessionMap.computeIfAbsent(chatId, k -> new UserSession());
             System.out.println(session.firstName+" > "+callback);
 
-            switch (callback) {
+            //state выбор участников
+            if(session.state == UserState.PARTICIPANTS_CHOOSING) {
+                switch (callback) {
 // Выбрана кнопка УЧАСТНИКА
-                default:
-                    // Перерисовка клавы со сменой статуса кнопки
-                    updateButtonState(chatId, session.askWhoMessageId,callback);
-                    break;
+                    default:
+                        // Перерисовка клавы со сменой статуса кнопки
+                        updateButtonState(chatId, session.askWhoMessageId, callback);
+                        break;
 // Выбрана кнопка ГОСТЬ
-                case guestButton:
-                    sendMessage(chatId,"Как зовут гостя?",true);
-                    session.state = UserState.GUEST_NAME_PROCESSING;
-                    break;
+                    case guestButton:
+                        sendMessage(chatId, "Как зовут гостя?", true);
+                        session.state = UserState.GUEST_NAME_PROCESSING;
+                        break;
 // Выбрана кнопка ДАЛЬШЕ
-                case completeButton:
-        // Засчитаны все пиццы, ИТОГ
-                    if (session.currentPizza == session.totalPizzas){
-                        // Убираем сообщения
-                        session.messagesToDelete.add(session.askWhoMessageId);
-                        deleteMessages(chatId,session.messagesToDelete);
-                        // Расчет
-                        calculateResults(chatId);
-                        // Отправляем результат
-                        sendResults(chatId);
-                        // Удаляем сессию после окончания
-                        sessionMap.remove(chatId);
-                    }
-        // Засчитаны не все, переход к след пицце
-                    else {
-                        calculateResults(chatId); // Расчет
-                        // Очищаем расчеты по текущему
-                        session.participantsWithPrice.clear(); // Сбрасываем список
-                        session.pricePerCount = 0; // Сбрасываем доли по пицце
-                        // Убираем сообщения по текущему
-                        session.messagesToDelete.add(session.askWhoMessageId);
-                        deleteMessages(chatId,session.messagesToDelete);
-                        // Переходим к след. пицце
-                        session.currentPizza++;
-                        askWhoAtePizza(chatId);
-                    }
-                    break;
-            }
+                    case completeButton:
+                        // Засчитаны все пиццы, ИТОГ
+                        if (session.currentPizza == session.totalPizzas) {
+                            // Убираем сообщения
+                            session.messagesToDelete.add(session.askWhoMessageId);
+                            deleteMessages(chatId, session.messagesToDelete);
+                            // Расчет
+                            calculateResults(chatId);
+                            // Отправляем результат
+                            sendResults(chatId);
+                            // Удаляем сессию после окончания
+                            sessionMap.remove(chatId);
+                        }
+                        // Засчитаны не все, переход к след пицце
+                        else {
+                            calculateResults(chatId); // Расчет
+                            // Очищаем расчеты по текущему
+                            session.participantsWithPrice.clear(); // Сбрасываем список
+                            session.pricePerCount = 0; // Сбрасываем доли по пицце
+                            // Убираем сообщения по текущему
+                            session.messagesToDelete.add(session.askWhoMessageId);
+                            deleteMessages(chatId, session.messagesToDelete);
+                            // Переходим к след. пицце
+                            session.currentPizza++;
+                            askWhoAtePizza(chatId);
+                        }
+                        break;
+                }
+            } else {sendMessage(chatId, "На этом шаге не получится обработать кнопку.",true);}
         }
 // update message и callback пустые
         else {
