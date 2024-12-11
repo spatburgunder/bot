@@ -1,7 +1,7 @@
 {
   "builds": [
     {
-      "src": "./dockerfile",
+      "src": "./Dockerfile",
       "use": "docker",
       "config": {
         "runtime": "experimental-edge"
@@ -9,6 +9,8 @@
     }
   ],
   "routes": [
-    { "src": "/.*", "dest": "/" }
+    {
+      "src": "/(.*)",
+      "dest": "/" }
   ]
 }
