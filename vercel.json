@@ -1,11 +1,9 @@
 {
+  "version": 2,
   "builds": [
     {
-      "src": "./Dockerfile",
-      "use": "docker",
-      "config": {
-        "runtime": "experimental-edge"
-      }
+      "src": "Dockerfile",
+      "use": "@vercel/docker"
     }
   ],
   "routes": [
