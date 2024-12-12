@@ -31,7 +31,8 @@ public class MyBot extends TelegramLongPollingBot {
         FEEDBACK_PROCESSING
     }
     private static class UserSession {
-        private UserState state = UserState.WAITING_FOR_START;
+        private UserState state = UserState.WAITING_FOR_START; // начальный
+        String itemName = "\uD83D\uDCA8"; // начальный
         String firstName;
         String lastName;
         String userName;
@@ -39,7 +40,7 @@ public class MyBot extends TelegramLongPollingBot {
         int totalPizzas;
         double pizzaPrice;
         double pricePerCount;
-        int currentPizza = 1;
+        int currentPizza = 1; //счетчик
         Map<String, Double> participantsWithPrice = new HashMap<>();
         Map<String, Double> participantsWithPriceTotal = new HashMap<>();
         Integer askWhoMessageId = null;
@@ -87,7 +88,8 @@ public class MyBot extends TelegramLongPollingBot {
                     break;
 
                 case START_PROCESSING:
-                    sendMessage(chatId, "Сколько было пицц?", true);
+                    if(!messageText.equals("/start")){session.itemName = messageText;}
+                    sendMessage(chatId, "Введи количество \""+session.itemName+"\"", true);
                     session.state = UserState.COUNT_PROCESSING;
                     break;
 
@@ -95,7 +97,7 @@ public class MyBot extends TelegramLongPollingBot {
                     session.messagesToDelete.add(update.getMessage().getMessageId()); // Сообщение к удалению
                     if (messageText.matches("\\d+") && Integer.parseInt(messageText) > 0) {
                         session.totalPizzas = Integer.parseInt(messageText);
-                        sendMessage(chatId, "Сколько стоит одна пицца?", true);
+                        sendMessage(chatId, "Сколько стоит \""+session.itemName+"\"?", true);
                         session.state = UserState.PRICE_PROCESSING;
                     } else {
                         sendMessage(chatId, "Введите корректное количество", true);
@@ -172,8 +174,6 @@ public class MyBot extends TelegramLongPollingBot {
             UserSession session = sessionMap.computeIfAbsent(chatId, k -> new UserSession());
             System.out.println(session.firstName+" > "+callback);
 
-            //state выбор участников
-            if(session.state == UserState.PARTICIPANTS_CHOOSING) {
                 switch (callback) {
 // Выбрана кнопка УЧАСТНИКА
                     default:
@@ -196,15 +196,11 @@ public class MyBot extends TelegramLongPollingBot {
                             calculateResults(chatId);
                             // Отправляем результат
                             sendResults(chatId);
-                            // Удаляем сессию после окончания
-                            sessionMap.remove(chatId);
+                            session.state = UserState.WAITING_FOR_START;
                         }
                         // Засчитаны не все, переход к след пицце
                         else {
                             calculateResults(chatId); // Расчет
-                            // Очищаем расчеты по текущему
-                            session.participantsWithPrice.clear(); // Сбрасываем список
-                            session.pricePerCount = 0; // Сбрасываем доли по пицце
                             // Убираем сообщения по текущему
                             session.messagesToDelete.add(session.askWhoMessageId);
                             deleteMessages(chatId, session.messagesToDelete);
@@ -213,8 +209,18 @@ public class MyBot extends TelegramLongPollingBot {
                             askWhoAtePizza(chatId);
                         }
                         break;
+// Выбрана кнопка ДОБАВИТЬ ПОЗИЦИЮ
+                    case "additional_item":
+                        sendMessage(chatId, "Введи название доп позиции", true);
+                        session.currentPizza=1; // сброс указателя для новой позиции
+                        // сброс меток участников
+                        for (String key : session.participants.keySet()) {
+                            session.participants.put(key, false); // false для всех участников в карте
+                        }
+                        session.state = UserState.START_PROCESSING;
+                        break;
                 }
-            } else {sendMessage(chatId, "На этом шаге не получится обработать кнопку.",true);}
+
         }
 // update message и callback пустые
         else {
@@ -225,13 +231,14 @@ public class MyBot extends TelegramLongPollingBot {
     private void askWhoAtePizza(Long chatId) {
         UserSession session = sessionMap.get(chatId);
 
+        InlineKeyboardMarkup markup = createInlineKeyboardMarkup(session.participants); // Создаем клаву с инлайн кнопками
+        // создаем объект сообщения
+        SendMessage sendMessage = SendMessage.builder()
+                .chatId(String.valueOf(chatId))
+                .text("На кого делим "+session.itemName+" №" + (session.currentPizza) + "?")
+                .replyMarkup(markup)
+                .build();
         try {
-            InlineKeyboardMarkup markup = createInlineKeyboardMarkup(session.participants); // Создаем клаву с инлайн кнопками
-            // создаем объект сообщения
-            SendMessage sendMessage = new SendMessage();
-            sendMessage.setChatId(String.valueOf(chatId));
-            sendMessage.setText("Кто ел пиццу №" + (session.currentPizza) + "?"); // Сообщение
-            sendMessage.setReplyMarkup(markup); // инлайн клавиатура
             Message sentMessage = execute(sendMessage);
             System.out.println(session.firstName+" << " + sentMessage.getText());
             session.askWhoMessageId = sentMessage.getMessageId(); // Записываем id отправленного сообщения
@@ -344,10 +351,14 @@ public class MyBot extends TelegramLongPollingBot {
         calculateResultsTotal(chatId); // Добавление текущего к итоговому
         DecimalFormat df = new DecimalFormat("#.00"); //формат округления
         sendMessage(chatId,
-                "Пицца № " +(session.currentPizza)+" из "+(session.totalPizzas)+" по " +
+                session.itemName+" № " +(session.currentPizza)+" из "+(session.totalPizzas)+" по " +
                         df.format(session.pricePerCount) +" руб.:\n"+
                         String.join(", ", session.participants.entrySet().stream().filter(Map.Entry::getValue).map(Map.Entry::getKey).toList()),
                 false);
+
+        // Очищаем расчеты по текущему
+        session.participantsWithPrice.clear(); // Сбрасываем список
+        session.pricePerCount = 0; // Сбрасываем доли по пицце
     }
 
     private void calculateResultsTotal(Long chatId) {
@@ -365,23 +376,46 @@ public class MyBot extends TelegramLongPollingBot {
     }
 
     private void sendResults(Long chatId) {
-
         UserSession session = sessionMap.get(chatId);
         System.out.println(session.firstName+" - sendResults");
-        DecimalFormat df = new DecimalFormat("#.00"); //формат округления
-
-        StringBuilder resultStr = new StringBuilder(); //запись результата в строку
+        //формат округления
+        DecimalFormat df = new DecimalFormat("#.00");
+        //запись результирующей строки по каждому из участников
+        StringBuilder resultStr = new StringBuilder();
         for (Map.Entry<String, Double> entry : session.participantsWithPriceTotal.entrySet()) {
-            resultStr.append("   ").append(entry.getKey()).append(": ").append(df.format(entry.getValue())).append("\n");
+            resultStr.append("\t\t\t").append(entry.getKey()).append(": ") // имя
+                    .append(df.format(entry.getValue())).append("\n"); // сумма
         }
-
+        //сумма Всего
         double sumTotal = 0;
         for (Double value : session.participantsWithPriceTotal.values()) {
             sumTotal += value;
         }
 
-        String result = "Итог:\n"+resultStr+"\nВсего: "+ (int)Math.round(sumTotal) +" руб."; // итоговое сообщение
-        sendMessage(chatId, result, false);
+        // создаем инлайн кнопку
+        InlineKeyboardButton button = InlineKeyboardButton.builder()
+                .text("Добавить позицию")
+                .callbackData("additional_item")
+                .build();
+
+        // добавляем кнопку в клаву
+        InlineKeyboardMarkup markup = InlineKeyboardMarkup.builder()
+                .keyboard(List.of(List.of(button)))
+                .build();
+
+        // создаем сообщение
+        SendMessage sendMessage = SendMessage.builder()
+                .chatId(String.valueOf(chatId))
+                .text("Итог:\n"+resultStr+"\nВсего: "+ (int)Math.round(sumTotal) +" руб.")
+                .replyMarkup(markup)
+                .build();
+        try {
+            Message sentMessage = execute(sendMessage);
+            System.out.println(session.firstName+" << " + sentMessage.getText());
+        } catch (TelegramApiException e) {
+            e.printStackTrace();
+        }
+
     }
 
     @Override
