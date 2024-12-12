@@ -63,6 +63,13 @@ public class MyBot extends TelegramLongPollingBot {
                 // удаление сообщений
                 if(session.askWhoMessageId != null){session.messagesToDelete.add(session.askWhoMessageId);}
                 if(!session.messagesToDelete.isEmpty()){deleteMessages(chatId,session.messagesToDelete);}
+                session.state = UserState.WAITING_FOR_START;
+            }
+
+            if (messageText.equals("/calculate")){
+                // удаление сообщений
+                if(session.askWhoMessageId != null){session.messagesToDelete.add(session.askWhoMessageId);}
+                if(!session.messagesToDelete.isEmpty()){deleteMessages(chatId,session.messagesToDelete);}
                 // обновление сессии
                 sessionMap.remove(chatId);
                 session = sessionMap.computeIfAbsent(chatId, k -> new UserSession());
@@ -88,7 +95,7 @@ public class MyBot extends TelegramLongPollingBot {
                     break;
 
                 case START_PROCESSING:
-                    if(!messageText.equals("/start")){session.itemName = messageText;}
+                    if(!messageText.equals("/calculate")){session.itemName = messageText;}
                     sendMessage(chatId, "Введи количество \""+session.itemName+"\"", true);
                     session.state = UserState.COUNT_PROCESSING;
                     break;
