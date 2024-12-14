@@ -1,9 +1,13 @@
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
+import org.telegram.telegrambots.meta.api.methods.polls.SendPoll;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
+import org.telegram.telegrambots.meta.api.methods.updatingmessages.DeleteMessage;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.DeleteMessages;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageReplyMarkup;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
+import org.telegram.telegrambots.meta.api.objects.polls.Poll;
+import org.telegram.telegrambots.meta.api.objects.polls.PollOption;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
@@ -13,7 +17,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 public class MyBot extends TelegramLongPollingBot {
-    Long chatId;
+    //Long chatId;
     Long bossChatId = 639284651L;
     private static final Map<Long, UserSession> sessionMap = new HashMap<>();
     private static final String marked = "\uD83D\uDC49 "; //эмодзи для отметки выбранной кнопки
@@ -28,7 +32,9 @@ public class MyBot extends TelegramLongPollingBot {
         GUEST_NAME_PROCESSING,
         PARTICIPANTS_CHOOSING,
         WAITING_FOR_FEEDBACK,
-        FEEDBACK_PROCESSING
+        FEEDBACK_PROCESSING,
+        DONATE_REQUEST,
+        POLL_PASSING
     }
     private static class UserSession {
         private UserState state = UserState.WAITING_FOR_START; // начальный
@@ -36,7 +42,6 @@ public class MyBot extends TelegramLongPollingBot {
         String firstName;
         String lastName;
         String userName;
-        Long userId;
         int totalPizzas;
         double pizzaPrice;
         double pricePerCount;
@@ -45,19 +50,28 @@ public class MyBot extends TelegramLongPollingBot {
         Map<String, Double> participantsWithPriceTotal = new HashMap<>();
         Integer askWhoMessageId = null;
         Integer sentMessageId = null;
+        Integer resultMessageId = null;
+        String sentPollId = null;
+        List<PollOption> pollOptions;
         List<Integer> messagesToDelete = new ArrayList<>(); // Список сообщений к удалению
         Map<String, Boolean> participants = new LinkedHashMap<>();
     }
 
     @Override
     public void onUpdateReceived(Update update) {
+        try{
+        Long chatId = getChatIdFromUpdate(update);
+        System.out.println("chat id: "+chatId);
+        UserSession session = sessionMap.computeIfAbsent(chatId, k -> new UserSession());
 
         if (update.hasMessage() && update.getMessage().hasText()) {
-            chatId = update.getMessage().getChatId();
             String messageText = update.getMessage().getText();
-            UserSession session = sessionMap.computeIfAbsent(chatId, k -> new UserSession());
             session.firstName = update.getMessage().getFrom().getFirstName();
             System.out.println(session.firstName+" >> "+messageText);
+            session.lastName = update.getMessage().getFrom().getLastName();
+            if(session.lastName==null){session.lastName="";}
+            session.userName = update.getMessage().getFrom().getUserName();
+            if(session.userName!=null){session.userName = "@"+session.userName;}
 
             if (messageText.equals("/start")){
                 // удаление сообщений
@@ -77,25 +91,32 @@ public class MyBot extends TelegramLongPollingBot {
                 session.state = UserState.START_PROCESSING;
             }
 
+            if (messageText.equals("/poll")){
+                session.state = UserState.POLL_PASSING;
+            }
+
             if (messageText.equals("/feedback")){
-                session.lastName = update.getMessage().getFrom().getLastName();
-                    if(session.lastName==null){session.lastName="";}
-                session.userName = update.getMessage().getFrom().getUserName();
-                    if(session.userName!=null){session.userName = "@"+session.userName;}
-                session.userId = update.getMessage().getFrom().getId();
                 session.state = UserState.WAITING_FOR_FEEDBACK;
+            }
+
+            if (messageText.equals("/donate")){
+                session.state = UserState.DONATE_REQUEST;
             }
 
             switch (session.state) {
                 case WAITING_FOR_START:
                     sendMessage(chatId,
                             "Доступные команды:\n\n"
-                            +"/start - начать новый расчет \uD83C\uDF55\n\n"
-                            +"/feedback - оставить обратную связь \uD83D\uDC8C\n\n", false);
+                            +"/calculate - начать новый расчет \uD83C\uDF55\n\n"
+                            +"/feedback - оставить обратную связь \uD83D\uDC8C\n\n"
+                            +"/donate - подать на хлеб \uD83D\uDCB8", false);
                     break;
 
                 case START_PROCESSING:
-                    if(!messageText.equals("/calculate")){session.itemName = messageText;}
+                    if(!messageText.equals("/calculate")){
+                        session.itemName = messageText;
+                        session.messagesToDelete.add(update.getMessage().getMessageId()); // Сообщение к удалению
+                    }
                     sendMessage(chatId, "Введи количество \""+session.itemName+"\"", true);
                     session.state = UserState.COUNT_PROCESSING;
                     break;
@@ -107,7 +128,7 @@ public class MyBot extends TelegramLongPollingBot {
                         sendMessage(chatId, "Сколько стоит \""+session.itemName+"\"?", true);
                         session.state = UserState.PRICE_PROCESSING;
                     } else {
-                        sendMessage(chatId, "Введите корректное количество", true);
+                        sendMessage(chatId, "Введи корректное количество", true);
                     }
                     break;
 
@@ -126,7 +147,7 @@ public class MyBot extends TelegramLongPollingBot {
                         askWhoAtePizza(chatId); // Первый запрос участников
                         session.state = UserState.PARTICIPANTS_CHOOSING;
                     } else {
-                        sendMessage(chatId, "Введите корректную цену", true);
+                        sendMessage(chatId, "Введи корректную цену", true);
                     }
                     break;
 
@@ -161,25 +182,101 @@ public class MyBot extends TelegramLongPollingBot {
                     session.state = UserState.WAITING_FOR_START;
                     sendMessage(bossChatId,
                             "❗❗❗❗❗❗❗❗❗❗\n"
-                                    +"Отзыв от пользователя "
-                                    +session.firstName+" "
-                                    +session.lastName+" ("
-                                    +session.userName+"), id "
-                                    +session.userId+":\n"
-                                    +messageText,false);
+                                    +session.firstName+" "+session.lastName+" ("+session.userName+") передал:\n"
+                                    +messageText,
+                            false);
                     // Удаляем сессию после окончания
                     sessionMap.remove(chatId);
+                    break;
+
+                case DONATE_REQUEST:
+
+                    // создаем инлайн кнопки
+                    /*InlineKeyboardButton button1 = InlineKeyboardButton
+                            .builder()
+                            .text("\uD83D\uDFE2 сбер")
+                            .url("https://www.sberbank.com/sms/pbpn?requisiteNumber=79201191976")
+                            .build();*/
+                    InlineKeyboardButton button2 = InlineKeyboardButton
+                            .builder()
+                            .text("\uD83D\uDFE1 Тиньк")
+                            .url("https://www.tinkoff.ru/rm/r_LSOkAqROCG.TCbgNCMCIj/eWJZt16574")
+                            .build();
+                    /*InlineKeyboardButton button3 = InlineKeyboardButton
+                            .builder()
+                            .text("\uD83D\uDD35 втб")
+                            .url("https://vtb.paymo.ru/collect-money/qr/?transaction=4de11b5b-10c4-4fba-86ce-b931828c3961")
+                            .build();
+                    */
+                    InlineKeyboardButton button4 = InlineKeyboardButton
+                            .builder()
+                            .text("TON Space")
+                            .callbackData("TON")
+                            .build();
+                    // добавляем кнопку в клаву
+                    InlineKeyboardMarkup markup = InlineKeyboardMarkup.builder()
+                            .keyboard(List.of(
+                                    //List.of(button1),
+                                    List.of(button2),
+                                    //List.of(button3),
+                                    List.of(button4)
+                            ))
+                            .build();
+
+                    // создаем сообщение
+                    SendMessage sendMessage = SendMessage.builder()
+                            .chatId(String.valueOf(chatId))
+                            .text("Есть возможность поддержать \uD83E\uDD70\n")
+                            .replyMarkup(markup)
+                            .build();
+                    try {
+                        Message sentMessage = execute(sendMessage);
+                        System.out.println(session.firstName+" << " + sentMessage.getText());
+                        session.sentMessageId = sentMessage.getMessageId(); // ID отправленного сообщения
+                        session.messagesToDelete.add(sentMessage.getMessageId()); // Сообщение к удалению
+                    } catch (TelegramApiException e) {
+                        e.printStackTrace();
+                    }
+
+                    session.state = UserState.WAITING_FOR_START;
+                    sendMessage(bossChatId,
+                            "❗"+session.firstName+" "+session.lastName+" ("+session.userName+") went to donate",
+                            false);
+                    // Удаляем сессию после окончания
+                    sessionMap.remove(chatId);
+                    break;
+
+                case POLL_PASSING:
+                    SendPoll poll = SendPoll
+                            .builder()
+                            .chatId(chatId)
+                            .question("На который")
+                            .options(List.of("Java", "Python", "JavaScript", "C#"))
+                            .isAnonymous(false)
+                            .allowMultipleAnswers(true)
+                            .type("")
+                            .build();
+                    try {
+                        Message sentPoll = execute(poll);
+                        session.sentPollId = sentPoll.getPoll().getId();
+                        session.pollOptions = sentPoll.getPoll().getOptions();
+                        sendMessage(chatId,"Ты будешь получать уведомления про это голосование, пока не отправишь новую команду",false);
+                    } catch (Exception e) {e.printStackTrace();}
+
+                    session.state = UserState.WAITING_FOR_START;
                     break;
             }
         }
 
 
 // update без сообщения, но с колбэком (нажали инлайн кнопку)
-        else if (update.hasCallbackQuery()){
-            chatId = update.getCallbackQuery().getMessage().getChatId();
+        else if (update.hasCallbackQuery()) {
+
+            //chatId = update.getCallbackQuery().getMessage().getChatId();
             String callback = update.getCallbackQuery().getData();
-            UserSession session = sessionMap.computeIfAbsent(chatId, k -> new UserSession());
+            //UserSession session = sessionMap.computeIfAbsent(chatId, k -> new UserSession());
             System.out.println(session.firstName+" > "+callback);
+
 
                 switch (callback) {
 // Выбрана кнопка УЧАСТНИКА
@@ -220,25 +317,67 @@ public class MyBot extends TelegramLongPollingBot {
                     case "additional_item":
                         sendMessage(chatId, "Введи название доп позиции", true);
                         session.currentPizza=1; // сброс указателя для новой позиции
+                        deleteMessage(chatId,session.resultMessageId);
                         // сброс меток участников
                         for (String key : session.participants.keySet()) {
                             session.participants.put(key, false); // false для всех участников в карте
                         }
                         session.state = UserState.START_PROCESSING;
                         break;
+// Выбрана кнопка TON SPACE
+                    case "TON":
+                        SendMessage message = SendMessage
+                                .builder()
+                                .chatId(chatId)
+                                .text("tap to copy:\n\n`UQCDXUXV-YyXlyBJifKB1t_XFgX5MeT2GEeJtTDsdsB8mwgc`")
+                                .build();
+                        message.enableMarkdownV2(true);
+                        try {
+                            Message sentMessage = execute(message);
+                            session.sentMessageId = sentMessage.getMessageId(); // ID отправленного сообщения
+                            session.messagesToDelete.add(sentMessage.getMessageId()); // Сообщение к удалению
+                        } catch (TelegramApiException e) {
+                            e.printStackTrace();
+                        }
+                        break;
                 }
 
         }
-// update message и callback пустые
+// update без message, без callback, но с ответом на голосование
+        else if(update.hasPollAnswer()) {
+
+            String pollId = update.getPollAnswer().getPollId(); // id опроса
+            Long chatIdPollCreator = getChatIdByPollId(pollId); // id чата создателя опроса
+            UserSession sessionPollCreator = sessionMap.get(chatIdPollCreator); // сессия создателя
+            List<String> options = new ArrayList<>(); // массив для выбранных вариантов
+            for (Integer id : update.getPollAnswer().getOptionIds()) {
+                options.add(sessionPollCreator.pollOptions.get(id).getText());
+            }
+            sendMessage(chatIdPollCreator,
+                    update.getPollAnswer().getUser().getFirstName()+
+                            " проголосовал, выбрал :"+options,
+                    true);
+        }
         else {
+            try {
+                System.out.println(update);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
             sendMessage(chatId, "Не могу обработать такое сообщение",false);
         }
+
+        } catch (Exception e) {
+            System.out.println("Произошла ошибка: " + e.getMessage());
+            throw e;
+        }
+
     }
 
     private void askWhoAtePizza(Long chatId) {
         UserSession session = sessionMap.get(chatId);
 
-        InlineKeyboardMarkup markup = createInlineKeyboardMarkup(session.participants); // Создаем клаву с инлайн кнопками
+        InlineKeyboardMarkup markup = createInlineKeyboardMarkup(chatId,session.participants); // Создаем клаву с инлайн кнопками
         // создаем объект сообщения
         SendMessage sendMessage = SendMessage.builder()
                 .chatId(String.valueOf(chatId))
@@ -277,16 +416,30 @@ public class MyBot extends TelegramLongPollingBot {
         System.out.println(session.firstName+" - deleteMessages");
         try {
             // Используем метод deleteMessages
-            DeleteMessages deleteMessages = new DeleteMessages();
-            deleteMessages.setChatId(String.valueOf(chatId));
-            deleteMessages.setMessageIds(messageIds);
+            DeleteMessages deleteMessages =  DeleteMessages.builder()
+                    .chatId(chatId)
+                    .messageIds(messageIds)
+                    .build();
             execute(deleteMessages);
         } catch (TelegramApiException e) {
             e.printStackTrace();
         }
     }
-
-    private InlineKeyboardMarkup createInlineKeyboardMarkup(Map<String, Boolean> options) {
+    private void deleteMessage(Long chatId, Integer messageId) {
+        UserSession session = sessionMap.get(chatId);
+        System.out.println(session.firstName+" - deleteMessage");
+        try {
+            // Используем метод deleteMessage
+            DeleteMessage deleteMessage = DeleteMessage.builder()
+                    .chatId(chatId)
+                    .messageId(messageId)
+                    .build();
+            execute(deleteMessage);
+        } catch (TelegramApiException e) {
+            e.printStackTrace();
+        }
+    }
+    private InlineKeyboardMarkup createInlineKeyboardMarkup(Long chatId,Map<String, Boolean> options) {
             UserSession session = sessionMap.get(chatId);
         System.out.println(session.firstName+" - createInlineKeyboardMarkup");
 
@@ -331,7 +484,7 @@ public class MyBot extends TelegramLongPollingBot {
             session.participants.put(callback, !session.participants.get(callback)); // переключаем значение
         }
         // Создаем клавиатуру с обновленными кнопками
-        InlineKeyboardMarkup markup = createInlineKeyboardMarkup(session.participants);
+        InlineKeyboardMarkup markup = createInlineKeyboardMarkup(chatId,session.participants);
         // Подготовка обновления
         EditMessageReplyMarkup editMarkup = new EditMessageReplyMarkup();
         editMarkup.setChatId(chatId);
@@ -385,6 +538,7 @@ public class MyBot extends TelegramLongPollingBot {
     private void sendResults(Long chatId) {
         UserSession session = sessionMap.get(chatId);
         System.out.println(session.firstName+" - sendResults");
+        deleteMessages(chatId,session.messagesToDelete);
         //формат округления
         DecimalFormat df = new DecimalFormat("#.00");
         //запись результирующей строки по каждому из участников
@@ -401,7 +555,7 @@ public class MyBot extends TelegramLongPollingBot {
 
         // создаем инлайн кнопку
         InlineKeyboardButton button = InlineKeyboardButton.builder()
-                .text("Добавить позицию")
+                .text("Добавить позицию из чека")
                 .callbackData("additional_item")
                 .build();
 
@@ -418,6 +572,7 @@ public class MyBot extends TelegramLongPollingBot {
                 .build();
         try {
             Message sentMessage = execute(sendMessage);
+            session.resultMessageId = sentMessage.getMessageId();
             System.out.println(session.firstName+" << " + sentMessage.getText());
         } catch (TelegramApiException e) {
             e.printStackTrace();
@@ -425,6 +580,28 @@ public class MyBot extends TelegramLongPollingBot {
 
     }
 
+    public Long getChatIdByPollId(String pollId) {
+        for (Map.Entry<Long, UserSession> entry : sessionMap.entrySet()) {
+            UserSession session = entry.getValue();
+            System.out.println("entry.getKey(): "+entry.getKey());
+            System.out.println("poll id from sessionmap: "+session.sentPollId);
+            if (session.sentPollId.equals(pollId)) {
+                return entry.getKey(); // Возвращаем chatId
+            }
+        }
+        System.out.println("создатель опроса завершил сессию");
+        return null; // chatId не найден
+    }
+    public Long getChatIdFromUpdate(Update update){
+        if (update.hasMessage()&& update.getMessage().hasText()) {
+            return update.getMessage().getChatId(); // сообщение
+        } else if (update.hasCallbackQuery()) {
+            return update.getCallbackQuery().getMessage().getChatId(); // callback
+        } else if (update.hasPollAnswer()) {
+            return update.getPollAnswer().getUser().getId(); // ответ на голосование
+        }
+        return null;
+    }
     @Override
     public String getBotUsername() {
         return "[test]";
