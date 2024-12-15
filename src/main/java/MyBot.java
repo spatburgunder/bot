@@ -8,7 +8,9 @@ import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.polls.PollOption;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardRow;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
 import java.text.DecimalFormat;
@@ -316,7 +318,24 @@ public class MyBot extends TelegramLongPollingBot {
                         break;
 // Выбрана кнопка ДОБАВИТЬ ПОЗИЦИЮ
                     case "additional_item":
-                        sendMessage(chatId, "Введи название доп позиции", true);
+                        ReplyKeyboardMarkup replyKeyboard = ReplyKeyboardMarkup.builder()
+                                .selective(true)
+                                .resizeKeyboard(true)
+                                .oneTimeKeyboard(true)
+                                .inputFieldPlaceholder("Введи сам или выбери")
+                                .keyboard(Collections.singletonList(
+                                        new KeyboardRow() {{
+                                            add("\uD83E\uDED6");
+                                            add("☕\uFE0F");
+                                            add("\uD83E\uDDC3");
+                                            add("\uD83C\uDF55");
+                                            add("\uD83C\uDF7A");
+                                            add("\uD83D\uDE95");
+                                        }}
+                                )).build();
+
+                        sendMessageWithKeyboard(chatId,"Введи название доп позиции или выбери", replyKeyboard,true);
+
                         session.currentPizza=1; // сброс указателя для новой позиции
                         session.totalPizzas = 1; // всегда 1 шт
                         deleteMessage(chatId,session.resultMessageId);
@@ -410,6 +429,26 @@ public class MyBot extends TelegramLongPollingBot {
             SendMessage message = new SendMessage();
             message.setChatId(String.valueOf(chatId));
             message.setText(text);
+            Message sentMessage = execute(message);
+            System.out.println(session.firstName+" << "+text.replaceAll("[\n]+|\\s+", " ")); // без переносов, пробелов и отступов
+            session.sentMessageId = sentMessage.getMessageId(); // ID отправленного сообщения
+            if(deleteFlag){
+                session.messagesToDelete.add(sentMessage.getMessageId()); // Сообщение к удалению
+            }
+
+        } catch (TelegramApiException e) {
+            e.printStackTrace();
+            sendMessage(chatId, "что-то пошло не так: " + e.getMessage(), false);
+        }
+    }
+    private void sendMessageWithKeyboard (Long chatId, String text, ReplyKeyboardMarkup keyboard, Boolean deleteFlag) {
+        UserSession session = sessionMap.get(chatId);
+        try {
+            SendMessage message = SendMessage.builder()
+                    .chatId(chatId)
+                    .text(text)
+                    .replyMarkup(keyboard)
+                    .build();
             Message sentMessage = execute(message);
             System.out.println(session.firstName+" << "+text.replaceAll("[\n]+|\\s+", " ")); // без переносов, пробелов и отступов
             session.sentMessageId = sentMessage.getMessageId(); // ID отправленного сообщения
