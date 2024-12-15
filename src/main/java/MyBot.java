@@ -116,9 +116,14 @@ public class MyBot extends TelegramLongPollingBot {
                     if(!messageText.equals("/calculate")){
                         session.itemName = messageText;
                         session.messagesToDelete.add(update.getMessage().getMessageId()); // Сообщение к удалению
+                        // всегда 1шт
+                        session.totalPizzas = 1;
+                        sendMessage(chatId, "Сколько стоит \""+session.itemName+"\"?", true);
+                        session.state = UserState.PRICE_PROCESSING;
+                    } else {
+                        sendMessage(chatId, "Введи количество \"" + session.itemName + "\"", true);
+                        session.state = UserState.COUNT_PROCESSING;
                     }
-                    sendMessage(chatId, "Введи количество \""+session.itemName+"\"", true);
-                    session.state = UserState.COUNT_PROCESSING;
                     break;
 
                 case COUNT_PROCESSING:
@@ -374,11 +379,18 @@ public class MyBot extends TelegramLongPollingBot {
     private void askWhoAtePizza(Long chatId) {
         UserSession session = sessionMap.get(chatId);
 
+        StringBuilder msgText = new StringBuilder();
+        msgText.append("На кого делим ").append(session.itemName);
+        if(session.currentPizza > 1){
+            msgText.append(" №").append(session.itemName);
+        }
+        msgText.append("?");
+
         InlineKeyboardMarkup markup = createInlineKeyboardMarkup(chatId,session.participants); // Создаем клаву с инлайн кнопками
         // создаем объект сообщения
         SendMessage sendMessage = SendMessage.builder()
                 .chatId(String.valueOf(chatId))
-                .text("На кого делим "+session.itemName+" №" + (session.currentPizza) + "?")
+                .text(String.valueOf(msgText))
                 .replyMarkup(markup)
                 .build();
         try {
@@ -508,7 +520,7 @@ public class MyBot extends TelegramLongPollingBot {
         calculateResultsTotal(chatId); // Добавление текущего к итоговому
         DecimalFormat df = new DecimalFormat("#.00"); //формат округления
         sendMessage(chatId,
-                session.itemName+" № " +(session.currentPizza)+" из "+(session.totalPizzas)+" по " +
+                session.itemName+" № " +session.currentPizza+" из "+session.totalPizzas+" по " +
                         df.format(session.pricePerCount) +" руб.:\n"+
                         String.join(", ", session.participants.entrySet().stream().filter(Map.Entry::getValue).map(Map.Entry::getKey).toList()),
                 false);
@@ -630,7 +642,6 @@ public class MyBot extends TelegramLongPollingBot {
         SendMessage sendMessage = SendMessage.builder()
                 .chatId(String.valueOf(chatId))
                 .text("Итог:\n"+resultStr+"\nВсего: "+ resultSumTotal)
-
                 .replyMarkup(markup)
                 .build();
         sendMessage.enableMarkdown(true);
