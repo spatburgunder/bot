@@ -116,8 +116,6 @@ public class MyBot extends TelegramLongPollingBot {
                     if(!messageText.equals("/calculate")){
                         session.itemName = messageText;
                         session.messagesToDelete.add(update.getMessage().getMessageId()); // Сообщение к удалению
-                        // всегда 1шт
-                        session.totalPizzas = 1;
                         sendMessage(chatId, "Сколько стоит \""+session.itemName+"\"?", true);
                         session.state = UserState.PRICE_PROCESSING;
                     } else {
@@ -241,6 +239,7 @@ public class MyBot extends TelegramLongPollingBot {
                         session.messagesToDelete.add(sentMessage.getMessageId()); // Сообщение к удалению
                     } catch (TelegramApiException e) {
                         e.printStackTrace();
+                        sendMessage(chatId, "что-то пошло не так: " + e.getMessage(), false);
                     }
 
                     session.state = UserState.WAITING_FOR_START;
@@ -319,6 +318,7 @@ public class MyBot extends TelegramLongPollingBot {
                     case "additional_item":
                         sendMessage(chatId, "Введи название доп позиции", true);
                         session.currentPizza=1; // сброс указателя для новой позиции
+                        session.totalPizzas = 1; // всегда 1 шт
                         deleteMessage(chatId,session.resultMessageId);
                         // сброс меток участников
                         for (String key : session.participants.keySet()) {
@@ -340,6 +340,7 @@ public class MyBot extends TelegramLongPollingBot {
                             session.messagesToDelete.add(sentMessage.getMessageId()); // Сообщение к удалению
                         } catch (TelegramApiException e) {
                             e.printStackTrace();
+                            sendMessage(chatId, "что-то пошло не так: " + e.getMessage(), false);
                         }
                         break;
                 }
@@ -381,8 +382,8 @@ public class MyBot extends TelegramLongPollingBot {
 
         StringBuilder msgText = new StringBuilder();
         msgText.append("На кого делим ").append(session.itemName);
-        if(session.currentPizza > 1){
-            msgText.append(" №").append(session.itemName);
+        if(session.totalPizzas > 1){
+            msgText.append(" №").append(session.currentPizza);
         }
         msgText.append("?");
 
@@ -399,6 +400,7 @@ public class MyBot extends TelegramLongPollingBot {
             session.askWhoMessageId = sentMessage.getMessageId(); // Записываем id отправленного сообщения
         } catch (TelegramApiException e) {
             e.printStackTrace();
+            sendMessage(chatId, "что-то пошло не так: " + e.getMessage(), false);
         }
     }
 
@@ -417,6 +419,7 @@ public class MyBot extends TelegramLongPollingBot {
 
         } catch (TelegramApiException e) {
             e.printStackTrace();
+            sendMessage(chatId, "что-то пошло не так: " + e.getMessage(), false);
         }
     }
 
@@ -432,6 +435,7 @@ public class MyBot extends TelegramLongPollingBot {
             execute(deleteMessages);
         } catch (TelegramApiException e) {
             e.printStackTrace();
+            sendMessage(chatId, "что-то пошло не так: " + e.getMessage(), false);
         }
     }
     private void deleteMessage(Long chatId, Integer messageId) {
@@ -446,6 +450,7 @@ public class MyBot extends TelegramLongPollingBot {
             execute(deleteMessage);
         } catch (TelegramApiException e) {
             e.printStackTrace();
+            sendMessage(chatId, "что-то пошло не так: " + e.getMessage(), false);
         }
     }
     private InlineKeyboardMarkup createInlineKeyboardMarkup(Long chatId,Map<String, Boolean> options) {
@@ -503,6 +508,7 @@ public class MyBot extends TelegramLongPollingBot {
             execute(editMarkup); // Отправляем обновление
         } catch (TelegramApiException e) {
             e.printStackTrace();
+            sendMessage(chatId, "что-то пошло не так: " + e.getMessage(), false);
         }
     }
 
@@ -519,11 +525,28 @@ public class MyBot extends TelegramLongPollingBot {
 
         calculateResultsTotal(chatId); // Добавление текущего к итоговому
         DecimalFormat df = new DecimalFormat("#.00"); //формат округления
-        sendMessage(chatId,
-                session.itemName+" № " +session.currentPizza+" из "+session.totalPizzas+" по " +
-                        df.format(session.pricePerCount) +" руб.:\n"+
-                        String.join(", ", session.participants.entrySet().stream().filter(Map.Entry::getValue).map(Map.Entry::getKey).toList()),
-                false);
+
+        // строка с участниками
+        String participants = session.participants.entrySet().stream()
+                .filter(Map.Entry::getValue)
+                .map(Map.Entry::getKey)
+                .collect(Collectors.joining(", "));
+        // собираем сообщение
+        StringBuilder message = new StringBuilder()
+                .append(session.itemName);
+        if(session.totalPizzas >1){
+            message.append(" № ")
+                    .append(session.currentPizza)
+                    .append(" из ")
+                    .append(session.totalPizzas);
+        }
+        message.append(" по ")
+                .append(df.format(session.pricePerCount))
+                .append(" руб.:")
+                .append("\n")
+                .append(participants);
+
+        sendMessage(chatId, String.valueOf(message), false);
 
         // Очищаем расчеты по текущему
         session.participantsWithPriceCurrent.clear(); // Сбрасываем список
@@ -651,6 +674,7 @@ public class MyBot extends TelegramLongPollingBot {
             System.out.println(session.firstName+" << " + sentMessage.getText());
         } catch (TelegramApiException e) {
             e.printStackTrace();
+            sendMessage(chatId, "что-то пошло не так: " + e.getMessage(), false);
         }
 
     }
