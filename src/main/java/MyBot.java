@@ -6,7 +6,6 @@ import org.telegram.telegrambots.meta.api.methods.updatingmessages.DeleteMessage
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageReplyMarkup;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
-import org.telegram.telegrambots.meta.api.objects.polls.Poll;
 import org.telegram.telegrambots.meta.api.objects.polls.PollOption;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
@@ -46,8 +45,8 @@ public class MyBot extends TelegramLongPollingBot {
         double pizzaPrice;
         double pricePerCount;
         int currentPizza = 1; //счетчик
-        Map<String, Double> participantsWithPrice = new HashMap<>();
-        Map<String, Double> participantsWithPriceTotal = new HashMap<>();
+        Map<String, Double> participantsWithPriceCurrent = new HashMap<>();
+        Map<String,Map<String, Double>> participantsFinalMap = new HashMap<>();
         Integer askWhoMessageId = null;
         Integer sentMessageId = null;
         Integer resultMessageId = null;
@@ -109,7 +108,8 @@ public class MyBot extends TelegramLongPollingBot {
                             "Доступные команды:\n\n"
                             +"/calculate - начать новый расчет \uD83C\uDF55\n\n"
                             +"/feedback - оставить обратную связь \uD83D\uDC8C\n\n"
-                            +"/donate - подать на хлеб \uD83D\uDCB8", false);
+                            //+"/donate - подать на хлеб \uD83D\uDCB8"
+                            , false);
                     break;
 
                 case START_PROCESSING:
@@ -271,10 +271,7 @@ public class MyBot extends TelegramLongPollingBot {
 
 // update без сообщения, но с колбэком (нажали инлайн кнопку)
         else if (update.hasCallbackQuery()) {
-
-            //chatId = update.getCallbackQuery().getMessage().getChatId();
             String callback = update.getCallbackQuery().getData();
-            //UserSession session = sessionMap.computeIfAbsent(chatId, k -> new UserSession());
             System.out.println(session.firstName+" > "+callback);
 
 
@@ -504,7 +501,7 @@ public class MyBot extends TelegramLongPollingBot {
                 session.pizzaPrice /
                         session.participants.values().stream().filter(value -> value).count(); // Расчитываем долю в пицце
         // Складываем в массив участников и долю
-        session.participantsWithPrice = session.participants.entrySet().stream()
+        session.participantsWithPriceCurrent = session.participants.entrySet().stream()
                 .filter(Map.Entry::getValue) // Фильтруем по значению true
                 .collect(Collectors.toMap(Map.Entry::getKey, entry -> session.pricePerCount));
 
@@ -517,20 +514,34 @@ public class MyBot extends TelegramLongPollingBot {
                 false);
 
         // Очищаем расчеты по текущему
-        session.participantsWithPrice.clear(); // Сбрасываем список
+        session.participantsWithPriceCurrent.clear(); // Сбрасываем список
         session.pricePerCount = 0; // Сбрасываем доли по пицце
     }
 
     private void calculateResultsTotal(Long chatId) {
         UserSession session = sessionMap.get(chatId);
         System.out.println(session.firstName+" - calculateResultsTotal");
-        // Добавляем к предыдущим расчетам
-        for (Map.Entry<String, Double> entry : session.participantsWithPrice.entrySet()) {
-            String key = entry.getKey();
-            if (session.participantsWithPriceTotal.containsKey(key)) {
-                session.participantsWithPriceTotal.put(key, session.participantsWithPriceTotal.get(key) + entry.getValue());
+
+        for (Map.Entry<String, Double> entry : session.participantsWithPriceCurrent.entrySet()) {
+            String participantName = entry.getKey(); // Имя участника
+            Double price = entry.getValue(); // Цена
+
+            // Проверка наличия участника в participantsFinalMap
+            if (session.participantsFinalMap.containsKey(participantName)) {
+                // Участник найден, проверяем наличие товара
+                Map<String, Double> participantItems = session.participantsFinalMap.get(participantName); // Карта товаров участника
+                if (participantItems.containsKey(session.itemName)) {
+                    // Товар уже есть, обновляем цену
+                    participantItems.put(session.itemName, participantItems.get(session.itemName) + price);
+                } else {
+                    // Товара нет, добавляем новый
+                    participantItems.put(session.itemName, price);
+                }
             } else {
-                session.participantsWithPriceTotal.put(key, entry.getValue());
+                // Участника нет, создаём новую запись
+                Map<String, Double> newParticipantItems = new HashMap<>();
+                newParticipantItems.put(session.itemName, price);
+                session.participantsFinalMap.put(participantName, newParticipantItems);
             }
         }
     }
@@ -541,16 +552,67 @@ public class MyBot extends TelegramLongPollingBot {
         deleteMessages(chatId,session.messagesToDelete);
         //формат округления
         DecimalFormat df = new DecimalFormat("#.00");
+
         //запись результирующей строки по каждому из участников
         StringBuilder resultStr = new StringBuilder();
-        for (Map.Entry<String, Double> entry : session.participantsWithPriceTotal.entrySet()) {
-            resultStr.append("\t\t\t").append(entry.getKey()).append(": ") // имя
-                    .append(df.format(entry.getValue())).append("\n"); // сумма
+        for(Map.Entry<String, Map<String, Double>> itemEntry : session.participantsFinalMap.entrySet()) {
+            String name = itemEntry.getKey(); // имя
+            Map<String, Double> currentValues = session.participantsFinalMap.get(name); // карта значений для данного имени
+            StringBuilder valuesStr = new StringBuilder(); // для накопления значений
+
+            // вычисляем сумму всех значений для каждого имени
+            double totalSum = 0;
+            for (Double value : currentValues.values()) {
+                totalSum += value;
+            }
+            // собираем resultStr
+            resultStr.append("\t\t\t*")
+                    .append(name) // имя
+                    .append("*: ")
+                    .append(df.format(totalSum)); // сумма всех значений
+            // собираем суммы за каждую позицию, если их >1
+            if(currentValues.size()>1) {
+                resultStr.append(" (");
+                for (Map.Entry<String, Double> entry : currentValues.entrySet()) {
+                    // добавляем разделитель, если это не первое значение
+                    if (!valuesStr.isEmpty()) {
+                        valuesStr.append(" + ");
+                    }
+                    valuesStr.append(df.format(entry.getValue())) // строка с суммами за каждую позицию
+                            .append(" за ")
+                            .append(entry.getKey());
+                }
+                // накопленные значения для каждого имени
+                resultStr.append(valuesStr)
+                        .append(")");
+            } else {
+                // позиция одна
+                for (String key : currentValues.keySet()) {
+                    resultStr.append(" за ")
+                            .append(key);
+                }
+            }
+            resultStr.append("\n");
         }
-        //сумма Всего
-        double sumTotal = 0;
-        for (Double value : session.participantsWithPriceTotal.values()) {
-            sumTotal += value;
+
+            // сумма Всего
+        // карта для агрегации всех стоимостей по позициям
+        Map<String, Double> aggregatedPrices = new HashMap<>();
+        for (Map<String, Double> itemsWithPrices : session.participantsFinalMap.values()) {
+            for (Map.Entry<String, Double> entry : itemsWithPrices.entrySet()) {
+                String item = entry.getKey();
+                Double price = entry.getValue();
+                // суммируем стоимости
+                aggregatedPrices.put(item, aggregatedPrices.getOrDefault(item, 0.0) + price);
+            }
+        }
+        StringBuilder resultSumTotal = new StringBuilder();
+        for (Map.Entry<String, Double> entry : aggregatedPrices.entrySet()) {
+            resultSumTotal.append("\t\t\t")
+                    .append(entry.getKey())
+                    .append(" - ")
+                    .append((int)Math.round(entry.getValue()))
+                    .append(" руб.\n");
         }
 
         // создаем инлайн кнопку
@@ -567,9 +629,11 @@ public class MyBot extends TelegramLongPollingBot {
         // создаем сообщение
         SendMessage sendMessage = SendMessage.builder()
                 .chatId(String.valueOf(chatId))
-                .text("Итог:\n"+resultStr+"\nВсего: "+ (int)Math.round(sumTotal) +" руб.")
+                .text("Итог:\n"+resultStr+"\nВсего: "+ resultSumTotal)
+
                 .replyMarkup(markup)
                 .build();
+        sendMessage.enableMarkdown(true);
         try {
             Message sentMessage = execute(sendMessage);
             session.resultMessageId = sentMessage.getMessageId();
