@@ -19,7 +19,7 @@ public class Main {
 
         // Настройка healthcheck
         Service httpService = Service.ignite();
-        httpService.port(8080); // Порт для healthcheck
+        httpService.port(Integer.parseInt(System.getenv("PORT"))); // Порт для healthcheck
         httpService.get("/health", (req, res) -> "OK");
 
         // Ждем завершения работы бота
