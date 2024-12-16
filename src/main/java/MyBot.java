@@ -9,6 +9,7 @@ import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.polls.PollOption;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboardMarkup;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboardRemove;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardRow;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
@@ -62,7 +63,6 @@ public class MyBot extends TelegramLongPollingBot {
     public void onUpdateReceived(Update update) {
         try{
         Long chatId = getChatIdFromUpdate(update);
-        System.out.println("chat id: "+chatId);
         UserSession session = sessionMap.computeIfAbsent(chatId, k -> new UserSession());
 
         if (update.hasMessage() && update.getMessage().hasText()) {
@@ -334,7 +334,7 @@ public class MyBot extends TelegramLongPollingBot {
                                         }}
                                 )).build();
 
-                        sendMessageWithKeyboard(chatId,"Введи название доп позиции или выбери", replyKeyboard,true);
+                        sendMessageWithKeyboard(chatId,"Напиши название доп позиции или выбери", replyKeyboard,true);
 
                         session.currentPizza=1; // сброс указателя для новой позиции
                         session.totalPizzas = 1; // всегда 1 шт
@@ -426,9 +426,16 @@ public class MyBot extends TelegramLongPollingBot {
     private void sendMessage(Long chatId, String text, Boolean deleteFlag) {
         UserSession session = sessionMap.get(chatId);
         try {
+            // удаление reply клавиатуры
+            ReplyKeyboardRemove keyboardRemove = new ReplyKeyboardRemove();
+            keyboardRemove.setRemoveKeyboard(true);
+            // объект сообщения
             SendMessage message = new SendMessage();
             message.setChatId(String.valueOf(chatId));
             message.setText(text);
+            message.setReplyMarkup(keyboardRemove); // очистка reply клавы
+            //message.setReplyMarkup(new ReplyKeyboardRemove(){{setRemoveKeyboard(true);}}); // очистка reply клавы
+
             Message sentMessage = execute(message);
             System.out.println(session.firstName+" << "+text.replaceAll("[\n]+|\\s+", " ")); // без переносов, пробелов и отступов
             session.sentMessageId = sentMessage.getMessageId(); // ID отправленного сообщения
