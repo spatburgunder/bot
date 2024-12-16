@@ -241,7 +241,7 @@ public class MyBot extends TelegramLongPollingBot {
                         session.messagesToDelete.add(sentMessage.getMessageId()); // Сообщение к удалению
                     } catch (TelegramApiException e) {
                         e.printStackTrace();
-                        sendMessage(chatId, "что-то пошло не так: " + e.getMessage(), false);
+                        sendMessage(chatId, "Что-то пошло не так: " + e.getMessage() + "\nНачать сначала /start", true);
                     }
 
                     session.state = UserState.WAITING_FOR_START;
@@ -359,7 +359,7 @@ public class MyBot extends TelegramLongPollingBot {
                             session.messagesToDelete.add(sentMessage.getMessageId()); // Сообщение к удалению
                         } catch (TelegramApiException e) {
                             e.printStackTrace();
-                            sendMessage(chatId, "что-то пошло не так: " + e.getMessage(), false);
+                            sendMessage(chatId, "Что-то пошло не так: " + e.getMessage() + "\nНачать сначала /start", true);
                         }
                         break;
                 }
@@ -419,7 +419,7 @@ public class MyBot extends TelegramLongPollingBot {
             session.askWhoMessageId = sentMessage.getMessageId(); // Записываем id отправленного сообщения
         } catch (TelegramApiException e) {
             e.printStackTrace();
-            sendMessage(chatId, "что-то пошло не так: " + e.getMessage(), false);
+            sendMessage(chatId, "Что-то пошло не так: " + e.getMessage() + "\nНачать сначала /start", true);
         }
     }
 
@@ -445,7 +445,7 @@ public class MyBot extends TelegramLongPollingBot {
 
         } catch (TelegramApiException e) {
             e.printStackTrace();
-            sendMessage(chatId, "что-то пошло не так: " + e.getMessage(), false);
+            sendMessage(chatId, "Что-то пошло не так: " + e.getMessage() + "\nНачать сначала /start", true);
         }
     }
     private void sendMessageWithKeyboard (Long chatId, String text, ReplyKeyboardMarkup keyboard, Boolean deleteFlag) {
@@ -465,7 +465,7 @@ public class MyBot extends TelegramLongPollingBot {
 
         } catch (TelegramApiException e) {
             e.printStackTrace();
-            sendMessage(chatId, "что-то пошло не так: " + e.getMessage(), false);
+            sendMessage(chatId, "Что-то пошло не так: " + e.getMessage() + "\nНачать сначала /start", true);
         }
     }
 
@@ -481,7 +481,7 @@ public class MyBot extends TelegramLongPollingBot {
             execute(deleteMessages);
         } catch (TelegramApiException e) {
             e.printStackTrace();
-            sendMessage(chatId, "что-то пошло не так: " + e.getMessage(), false);
+            sendMessage(chatId, "Что-то пошло не так: " + e.getMessage() + "\nНачать сначала /start", true);
         }
     }
     private void deleteMessage(Long chatId, Integer messageId) {
@@ -496,7 +496,7 @@ public class MyBot extends TelegramLongPollingBot {
             execute(deleteMessage);
         } catch (TelegramApiException e) {
             e.printStackTrace();
-            sendMessage(chatId, "что-то пошло не так: " + e.getMessage(), false);
+            sendMessage(chatId, "Что-то пошло не так: " + e.getMessage() + "\nНачать сначала /start", true);
         }
     }
     private InlineKeyboardMarkup createInlineKeyboardMarkup(Long chatId,Map<String, Boolean> options) {
@@ -554,7 +554,7 @@ public class MyBot extends TelegramLongPollingBot {
             execute(editMarkup); // Отправляем обновление
         } catch (TelegramApiException e) {
             e.printStackTrace();
-            sendMessage(chatId, "что-то пошло не так: " + e.getMessage(), false);
+            sendMessage(chatId, "Что-то пошло не так: " + e.getMessage() + "\nНачать сначала /start", true);
         }
     }
 
@@ -659,8 +659,8 @@ public class MyBot extends TelegramLongPollingBot {
                     if (!valuesStr.isEmpty()) {
                         valuesStr.append(" + ");
                     }
-                    valuesStr.append(df.format(entry.getValue())) // строка с суммами за каждую позицию
-                            .append(" за ")
+                    valuesStr//.append(df.format(entry.getValue())) // строка с суммами за каждую позицию
+                            //.append(" за ")
                             .append(entry.getKey());
                 }
                 // накопленные значения для каждого имени
@@ -669,7 +669,7 @@ public class MyBot extends TelegramLongPollingBot {
             } else {
                 // позиция одна
                 for (String key : currentValues.keySet()) {
-                    resultStr.append(" за ")
+                    resultStr.append(" ")
                             .append(key);
                 }
             }
@@ -720,7 +720,7 @@ public class MyBot extends TelegramLongPollingBot {
             System.out.println(session.firstName+" << " + sentMessage.getText());
         } catch (TelegramApiException e) {
             e.printStackTrace();
-            sendMessage(chatId, "что-то пошло не так: " + e.getMessage(), false);
+            sendMessage(chatId, "Что-то пошло не так: " + e.getMessage() + "\nНачать сначала /start", true);
         }
 
     }
