@@ -328,16 +328,30 @@ public class MyBot extends TelegramLongPollingBot {
                                 .inputFieldPlaceholder("Напиши или выбери")
                                 .keyboard(Collections.singletonList(
                                         new KeyboardRow() {{
-                                            add("\uD83E\uDED6");
-                                            add("☕\uFE0F");
-                                            add("\uD83E\uDDC3");
-                                            add("\uD83C\uDF55");
-                                            add("\uD83C\uDF7A");
-                                            add("\uD83D\uDE95");
+                                            add("\uD83D\uDCA8"); //дым
+                                            add("\uD83E\uDED6"); //чайник
+                                            add("☕\uFE0F"); //кофе
+                                            //add("\uD83E\uDDC3"); //сок
+                                            add("\uD83C\uDF55"); //пицца
+                                            //add("\uD83C\uDF7A"); //пиво
+                                            add("\uD83D\uDE95"); //такси
                                         }}
                                 )).build();
+                        InlineKeyboardMarkup inlineKeyboard = InlineKeyboardMarkup.builder()
+                                .keyboardRow(List.of(
+                                        InlineKeyboardButton.builder().text("еще \uD83D\uDCA8, но по другой цене").callbackData("data1").build()))
+                                .keyboardRow(List.of(
+                                        InlineKeyboardButton.builder().text("\uD83C\uDF55").callbackData("data2").build(),
+                                        InlineKeyboardButton.builder().text("\uD83E\uDED6").callbackData("data3").build(),
+                                        InlineKeyboardButton.builder().text("☕\uFE0F").callbackData("data4").build(),
+                                        InlineKeyboardButton.builder().text("\uD83E\uDDC3").callbackData("data8").build(),
+                                        InlineKeyboardButton.builder().text("\uD83D\uDE95").callbackData("data5").build()))
+                                .keyboardRow(List.of(
+                                        InlineKeyboardButton.builder().text("\uD83C\uDF7A поштучно").callbackData("data6").build(),
+                                        InlineKeyboardButton.builder().text("другое").callbackData("data7").build()))
+                                .build();
 
-                        sendMessageWithKeyboard(chatId,"Напиши или выбери, что еще разделить поровну:", replyKeyboard,true);
+                        sendMessageWithKeyboard(chatId,"Напиши или выбери, что еще разделить *поровну*:", replyKeyboard,null,true);
 
                         session.currentPizza=1; // сброс указателя для новой позиции
                         session.totalPizzas = 1; // всегда 1 шт
@@ -450,14 +464,16 @@ public class MyBot extends TelegramLongPollingBot {
             e.printStackTrace();
         }
     }
-    private void sendMessageWithKeyboard (Long chatId, String text, ReplyKeyboardMarkup keyboard, Boolean deleteFlag) {
+    private void sendMessageWithKeyboard(Long chatId, String text, ReplyKeyboardMarkup replyKeyboard, InlineKeyboardMarkup inlineKeyboard, Boolean deleteFlag) {
         UserSession session = sessionMap.get(chatId);
         try {
             SendMessage message = SendMessage.builder()
                     .chatId(chatId)
                     .text(text)
-                    .replyMarkup(keyboard)
+                    .replyMarkup(replyKeyboard)
+                    .replyMarkup(inlineKeyboard)
                     .build();
+            message.enableMarkdownV2(true);
             Message sentMessage = execute(message);
             System.out.println(session.firstName+" << "+text.replaceAll("[\n]+|\\s+", " ")); // без переносов, пробелов и отступов
             session.sentMessageId = sentMessage.getMessageId(); // ID отправленного сообщения
