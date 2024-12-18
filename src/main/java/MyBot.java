@@ -259,8 +259,8 @@ public class MyBot extends TelegramLongPollingBot {
                     SendPoll poll = SendPoll
                             .builder()
                             .chatId(chatId)
-                            .question("На который")
-                            .options(List.of("Java", "Python", "JavaScript", "C#"))
+                            .question("Отметься какой на тебя рассчитывать")
+                            .options(List.of("Первый", "Второй", "Третий", "Четвертый","Пятый","Шестой","Седьмой","Восьмой"))
                             .isAnonymous(false)
                             .allowMultipleAnswers(true)
                             .type("")
@@ -269,7 +269,8 @@ public class MyBot extends TelegramLongPollingBot {
                         Message sentPoll = execute(poll);
                         session.sentPollId = sentPoll.getPoll().getId();
                         session.pollOptions = sentPoll.getPoll().getOptions();
-                        sendMessage(chatId,"Ты будешь получать уведомления про это голосование, пока не отправишь новую команду",false);
+                        sendMessage(chatId,"Отправляй опрос в диалог.\n" +
+                                "Ты будешь получать тут уведомления про это голосование, пока не отправишь новую команду",false);
                     } catch (Exception e) {e.printStackTrace();}
 
                     session.state = UserState.WAITING_FOR_START;
@@ -392,9 +393,9 @@ public class MyBot extends TelegramLongPollingBot {
             for (Integer id : update.getPollAnswer().getOptionIds()) {
                 options.add(sessionPollCreator.pollOptions.get(id).getText());
             }
+            // сообщаем о новом голосе
             sendMessage(chatIdPollCreator,
-                    update.getPollAnswer().getUser().getFirstName()+
-                            " проголосовал, выбрал :"+options,
+                    update.getPollAnswer().getUser().getFirstName()+" проголосовал, выбрал:\n"+options,
                     true);
         }
         else {
@@ -466,14 +467,16 @@ public class MyBot extends TelegramLongPollingBot {
     }
     private void sendMessageWithKeyboard(Long chatId, String text, ReplyKeyboardMarkup replyKeyboard, InlineKeyboardMarkup inlineKeyboard, Boolean deleteFlag) {
         UserSession session = sessionMap.get(chatId);
+        SendMessage message = new SendMessage();
+        message.setChatId(chatId);
+        message.setText(text);
+        message.enableMarkdownV2(true);
+        if (replyKeyboard!=null){
+            message.setReplyMarkup(replyKeyboard);
+        } else if (inlineKeyboard!=null) {
+            message.setReplyMarkup(inlineKeyboard);
+        }
         try {
-            SendMessage message = SendMessage.builder()
-                    .chatId(chatId)
-                    .text(text)
-                    .replyMarkup(replyKeyboard)
-                    .replyMarkup(inlineKeyboard)
-                    .build();
-            message.enableMarkdownV2(true);
             Message sentMessage = execute(message);
             System.out.println(session.firstName+" << "+text.replaceAll("[\n]+|\\s+", " ")); // без переносов, пробелов и отступов
             session.sentMessageId = sentMessage.getMessageId(); // ID отправленного сообщения
