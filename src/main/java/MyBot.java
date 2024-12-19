@@ -94,6 +94,9 @@ public class MyBot extends TelegramLongPollingBot {
             }
 
             if (messageText.equals("/poll")){
+                // удаление сообщений
+                if(session.askWhoMessageId != null){session.messagesToDelete.add(session.askWhoMessageId);}
+                if(!session.messagesToDelete.isEmpty()){deleteMessages(chatId,session.messagesToDelete);}
                 session.state = UserState.POLL_PASSING;
             }
 
@@ -259,18 +262,34 @@ public class MyBot extends TelegramLongPollingBot {
                     SendPoll poll = SendPoll
                             .builder()
                             .chatId(chatId)
-                            .question("Отметься какой на тебя рассчитывать")
-                            .options(List.of("Первый", "Второй", "Третий", "Четвертый","Пятый","Шестой","Седьмой","Восьмой"))
+                            .question("На меня рассчитывать кальян:")
+                            .options(List.of(
+                                    "1\uFE0F⃣ Первый",
+                                    "2\uFE0F⃣ Второй",
+                                    "3\uFE0F⃣ Третий",
+                                    "4\uFE0F⃣ Четвертый",
+                                    "5\uFE0F⃣ Пятый",
+                                    "6\uFE0F⃣ Шестой",
+                                    "7\uFE0F⃣ Седьмой",
+                                    "8\uFE0F⃣ Восьмой",
+                                    "9\uFE0F⃣ Девятый",
+                                    "На меня не рассчитывать"))
                             .isAnonymous(false)
                             .allowMultipleAnswers(true)
                             .type("")
+                            .build();
+                    InlineKeyboardMarkup inlineKeyboard = InlineKeyboardMarkup.builder()
+                            .keyboardRow(List.of(InlineKeyboardButton.builder().text("Тут будет инлайн кнопка").callbackData("data1").build()))
                             .build();
                     try {
                         Message sentPoll = execute(poll);
                         session.sentPollId = sentPoll.getPoll().getId();
                         session.pollOptions = sentPoll.getPoll().getOptions();
-                        sendMessage(chatId,"Отправляй опрос в диалог.\n" +
-                                "Ты будешь получать тут уведомления про это голосование, пока не отправишь новую команду",false);
+                        sendMessageWithKeyboard(chatId,"Отправляй опрос в диалог.\n" +
+                                "Ты будешь получать уведомления по нему, пока не отправишь новую команду",
+                                null,
+                                inlineKeyboard,
+                                true);
                     } catch (Exception e) {e.printStackTrace();}
 
                     session.state = UserState.WAITING_FOR_START;
@@ -395,7 +414,7 @@ public class MyBot extends TelegramLongPollingBot {
             }
             // сообщаем о новом голосе
             sendMessage(chatIdPollCreator,
-                    update.getPollAnswer().getUser().getFirstName()+" проголосовал, выбрал:\n"+options,
+                    update.getPollAnswer().getUser().getFirstName()+" выбрал:\n"+options,
                     true);
         }
         else {
@@ -470,7 +489,7 @@ public class MyBot extends TelegramLongPollingBot {
         SendMessage message = new SendMessage();
         message.setChatId(chatId);
         message.setText(text);
-        message.enableMarkdownV2(true);
+        message.enableMarkdown(true);
         if (replyKeyboard!=null){
             message.setReplyMarkup(replyKeyboard);
         } else if (inlineKeyboard!=null) {
