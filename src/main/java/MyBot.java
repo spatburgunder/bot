@@ -31,8 +31,8 @@ public class MyBot extends TelegramLongPollingBot {
         START_PROCESSING,
         COUNT_PROCESSING,
         PRICE_PROCESSING,
-        CHOOSING_OF_PROCESSING_TYPE,
         GUEST_NAME_PROCESSING,
+        PARTICIPANTS_ASKING,
         PARTICIPANTS_CHOOSING,
         WAITING_FOR_FEEDBACK,
         FEEDBACK_PROCESSING,
@@ -115,6 +115,7 @@ public class MyBot extends TelegramLongPollingBot {
                     sendMessage(chatId,
                             "Доступные команды:\n\n"
                             +"/calculate - начать новый расчет \uD83C\uDF55\n\n"
+                            +"/poll - запустить опрос \uD83D\uDCCA\n\n"
                             +"/feedback - оставить обратную связь \uD83D\uDC8C\n\n"
                             //+"/donate - подать на хлеб \uD83D\uDCB8"
                             , false);
@@ -125,7 +126,7 @@ public class MyBot extends TelegramLongPollingBot {
                         session.itemName = messageText;
                         session.messagesToDelete.add(update.getMessage().getMessageId()); // Сообщение к удалению
                         sendMessage(chatId, "Сколько стоит \""+session.itemName+"\"?", true);
-                        changeStateTo(UserState.PRICE_PROCESSING,session);
+                        changeStateTo(UserState.PARTICIPANTS_ASKING,session);
                     } else {
                         sendMessage(chatId, "Введи количество \"" + session.itemName + "\"", true);
                         changeStateTo(UserState.COUNT_PROCESSING,session);
@@ -144,27 +145,26 @@ public class MyBot extends TelegramLongPollingBot {
                     break;
 
                 case PRICE_PROCESSING:
-                    session.messagesToDelete.add(update.getMessage().getMessageId()); // Сообщение к удалению
+                    session.messagesToDelete.add(update.getMessage().getMessageId()); // Сообщения к удалению
                     if (messageText.matches("\\d+") && Double.parseDouble(messageText) > 0) {
                         session.pizzaPrice = Double.parseDouble(messageText);
 
-                        {// Создаем LinkedHashMap для кнопок инлайн клавиатуры
-                            for (String name : names) {
-                                session.participants.put(name, false);
-                            }
-                            // Дополнительно для гостя и перехода
-                            session.participants.put(guestButton, false);
-                            session.participants.put(completeButton, false);
-                        }
-                        askWhoAtePizza(chatId); // Первый запрос участников
-                        changeStateTo(UserState.PARTICIPANTS_CHOOSING,session);
+                        InlineKeyboardMarkup inlineKeyboard = InlineKeyboardMarkup.builder()
+                                .keyboardRow(List.of(
+                                        InlineKeyboardButton.builder().text("Выберу участников вручную").callbackData("partisipantsAsking").build()))
+                                .keyboardRow(List.of(
+                                        InlineKeyboardButton.builder().text("Создать опрос [beta]").callbackData("createPoll").build()))
+                                .build();
+                        sendMessageWithKeyboard(chatId, "Какой стул выберешь?",null,inlineKeyboard,true);
+
                     } else {
                         sendMessage(chatId, "Введи корректную цену", true);
                     }
                     break;
 
-                case CHOOSING_OF_PROCESSING_TYPE:
-
+                case PARTICIPANTS_ASKING:
+                    askWhoAtePizza(chatId); // Первый запрос участников
+                    changeStateTo(UserState.PARTICIPANTS_CHOOSING,session);
                     break;
 
                 case GUEST_NAME_PROCESSING:
@@ -228,8 +228,8 @@ public class MyBot extends TelegramLongPollingBot {
                     */
                     InlineKeyboardButton button4 = InlineKeyboardButton
                             .builder()
-                            .text("TON Space")
-                            .callbackData("TON")
+                            .text("USDT")
+                            .callbackData("USDT")
                             .build();
                     // добавляем кнопку в клаву
                     InlineKeyboardMarkup markup = InlineKeyboardMarkup.builder()
@@ -266,39 +266,7 @@ public class MyBot extends TelegramLongPollingBot {
                     break;
 
                 case POLL_PASSING:
-                    SendPoll poll = SendPoll
-                            .builder()
-                            .chatId(chatId)
-                            .question("На меня рассчитывать кальян:")
-                            .options(List.of(
-                                    "1\uFE0F⃣ Первый",
-                                    "2\uFE0F⃣ Второй",
-                                    "3\uFE0F⃣ Третий",
-                                    "4\uFE0F⃣ Четвертый",
-                                    "5\uFE0F⃣ Пятый",
-                                    "6\uFE0F⃣ Шестой",
-                                    "7\uFE0F⃣ Седьмой",
-                                    "8\uFE0F⃣ Восьмой",
-                                    "9\uFE0F⃣ Девятый",
-                                    "На меня не рассчитывать"))
-                            .isAnonymous(false)
-                            .allowMultipleAnswers(true)
-                            .type("")
-                            .build();
-                    InlineKeyboardMarkup inlineKeyboard = InlineKeyboardMarkup.builder()
-                            .keyboardRow(List.of(InlineKeyboardButton.builder().text("Тут будет инлайн кнопка").callbackData("data1").build()))
-                            .build();
-                    try {
-                        Message sentPoll = execute(poll);
-                        session.sentPollId = sentPoll.getPoll().getId();
-                        session.pollOptions = sentPoll.getPoll().getOptions();
-                        sendMessageWithKeyboard(chatId,"Отправляй опрос в диалог.\n" +
-                                "Ты будешь получать уведомления по нему, пока не отправишь новую команду (или пока я не зависну)",
-                                null,
-                                inlineKeyboard,
-                                true);
-                    } catch (Exception e) {e.printStackTrace();}
-
+                    sendPoll(chatId);
                     changeStateTo(UserState.WAITING_FOR_START,session);
                     break;
             }
@@ -349,9 +317,7 @@ public class MyBot extends TelegramLongPollingBot {
 // Выбрана кнопка ДОБАВИТЬ ПОЗИЦИЮ
                     case "additional_item":
                         ReplyKeyboardMarkup replyKeyboard = ReplyKeyboardMarkup.builder()
-                                .selective(true)
-                                .resizeKeyboard(true)
-                                .oneTimeKeyboard(true)
+                                .selective(true).resizeKeyboard(true).oneTimeKeyboard(true)
                                 .inputFieldPlaceholder("Напиши или выбери")
                                 .keyboard(Collections.singletonList(
                                         new KeyboardRow() {{
@@ -370,31 +336,35 @@ public class MyBot extends TelegramLongPollingBot {
                                 .keyboardRow(List.of(
                                         InlineKeyboardButton.builder().text("\uD83C\uDF55").callbackData("data2").build(),
                                         InlineKeyboardButton.builder().text("\uD83E\uDED6").callbackData("data3").build(),
+                                        InlineKeyboardButton.builder().text("\uD83D\uDE95").callbackData("data5").build()))
+                                .build();
+
+                        //sendMessageWithKeyboard(chatId,"Напиши или выбери, что еще разделить *поровну*:", replyKeyboard,null,true);
+                        sendMessageWithKeyboard(chatId,"Делим также поровну:", null, inlineKeyboard,true);
+
+                        InlineKeyboardMarkup inlineKeyboard2 = InlineKeyboardMarkup.builder()
+                                .keyboardRow(List.of(
+                                        InlineKeyboardButton.builder().text("\uD83C\uDF7A").callbackData("data6").build(),
                                         InlineKeyboardButton.builder().text("☕\uFE0F").callbackData("data4").build(),
                                         InlineKeyboardButton.builder().text("\uD83E\uDDC3").callbackData("data8").build(),
-                                        InlineKeyboardButton.builder().text("\uD83D\uDE95").callbackData("data5").build()))
-                                .keyboardRow(List.of(
-                                        InlineKeyboardButton.builder().text("\uD83C\uDF7A поштучно").callbackData("data6").build(),
                                         InlineKeyboardButton.builder().text("другое").callbackData("data7").build()))
                                 .build();
 
-                        sendMessageWithKeyboard(chatId,"Напиши или выбери, что еще разделить *поровну*:", replyKeyboard,null,true);
+                        sendMessageWithKeyboard(chatId,"Добавляем поштучно [[beta]]:", null, inlineKeyboard2,true);
 
                         session.currentPizza=1; // сброс указателя для новой позиции
                         session.totalPizzas = 1; // всегда 1 шт
                         deleteMessage(chatId,session.resultMessageId);
                         // сброс меток участников
-                        for (String key : session.participants.keySet()) {
-                            session.participants.put(key, false); // false для всех участников в карте
-                        }
-                        changeStateTo(UserState.START_PROCESSING,session);
+                        session.participants.replaceAll((k, v) -> false); // false для всех участников в карте
+                        //changeStateTo(UserState.START_PROCESSING,session);
                         break;
 // Выбрана кнопка TON SPACE
-                    case "TON":
+                    case "USDT":
                         SendMessage message = SendMessage
                                 .builder()
                                 .chatId(chatId)
-                                .text("tap to copy:\n\n`UQCDXUXV-YyXlyBJifKB1t_XFgX5MeT2GEeJtTDsdsB8mwgc`")
+                                .text("tap to copy:\n\n`UQDHek98PSWxFCENGWoGTJ-vcWHreMnhu-UxeeIuiAfnUfiK`")
                                 .build();
                         message.enableMarkdownV2(true);
                         try {
@@ -406,6 +376,19 @@ public class MyBot extends TelegramLongPollingBot {
                             sendMessage(chatId, "Что-то пошло не так: " + e.getMessage() + "\n\nПопробуй еще раз или начни сначала \n/start", true);
                         }
                         break;
+
+                    case "partisipantsAsking":
+                        askWhoAtePizza(chatId); // Первый запрос участников
+                        changeStateTo(UserState.PARTICIPANTS_CHOOSING,session);
+                        break;
+
+                    case "createPoll":
+                        sendPoll(chatId);
+                        changeStateTo(UserState.WAITING_FOR_START,session);
+                        break;
+
+                    //case String s when s.startsWith("additional_"):
+
                 }
 
         }
@@ -450,6 +433,14 @@ public class MyBot extends TelegramLongPollingBot {
         }
         msgText.append("?");
 
+        if (session.participants.isEmpty()) {// Создаем LinkedHashMap для кнопок инлайн клавиатуры
+            for (String name : names) {
+                session.participants.put(name, false);
+            }
+            // Дополнительно для гостя и перехода
+            session.participants.put(guestButton, false);
+            session.participants.put(completeButton, false);
+        }
         InlineKeyboardMarkup markup = createInlineKeyboardMarkup(chatId,session.participants); // Создаем клаву с инлайн кнопками
         // создаем объект сообщения
         SendMessage sendMessage = SendMessage.builder()
@@ -515,7 +506,41 @@ public class MyBot extends TelegramLongPollingBot {
             sendMessage(chatId, "Что-то пошло не так: " + e.getMessage() + "\n\nПопробуй еще раз или начни сначала \n/start", true);
         }
     }
-
+    private void sendPoll(Long chatId) {
+        UserSession session = sessionMap.get(chatId);
+        SendPoll poll = SendPoll
+                .builder()
+                .chatId(chatId)
+                .question("На меня рассчитывать кальян:")
+                .options(List.of(
+                        "1\uFE0F⃣ Первый",
+                        "2\uFE0F⃣ Второй",
+                        "3\uFE0F⃣ Третий",
+                        "4\uFE0F⃣ Четвертый",
+                        "5\uFE0F⃣ Пятый",
+                        "6\uFE0F⃣ Шестой",
+                        "7\uFE0F⃣ Седьмой",
+                        "8\uFE0F⃣ Восьмой",
+                        "9\uFE0F⃣ Девятый",
+                        "На меня не рассчитывать"))
+                .isAnonymous(false)
+                .allowMultipleAnswers(true)
+                .type("")
+                .build();
+        InlineKeyboardMarkup inlineKeyboard = InlineKeyboardMarkup.builder()
+                .keyboardRow(List.of(InlineKeyboardButton.builder().text("Тут будет инлайн кнопка").callbackData("data1").build()))
+                .build();
+        try {
+            Message sentPoll = execute(poll);
+            session.sentPollId = sentPoll.getPoll().getId();
+            session.pollOptions = sentPoll.getPoll().getOptions();
+            sendMessageWithKeyboard(chatId,"Отправляй опрос в диалог.\n" +
+                            "Ты будешь получать уведомления по нему, пока не отправишь новую команду (или пока я не зависну)",
+                    null,
+                    inlineKeyboard,
+                    true);
+        } catch (Exception e) {e.printStackTrace();}
+    }
     private void deleteMessages(Long chatId, List<Integer> messageIds) {
         UserSession session = sessionMap.get(chatId);
         //System.out.println(session.firstName+" - deleteMessages");
