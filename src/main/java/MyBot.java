@@ -102,6 +102,7 @@ public class MyBot extends TelegramLongPollingBot {
                 // удаление сообщений
                 if(session.askWhoMessageId != null){session.messagesToDelete.add(session.askWhoMessageId);}
                 if(!session.messagesToDelete.isEmpty()){deleteMessages(chatId,session.messagesToDelete);}
+                session.totalPizzas = 0;
                 changeStateTo(UserState.POLL_PASSING,session);
             }
 
@@ -139,7 +140,12 @@ public class MyBot extends TelegramLongPollingBot {
                     if (messageText.matches("\\d+") && Integer.parseInt(messageText) > 0) {
                         session.totalPizzas = Integer.parseInt(messageText);
                         sendMessage(chatId, "Сколько стоит \""+session.itemName+"\"?", true);
-                        changeStateTo(UserState.PRICE_PROCESSING,session);
+
+                        if (session.totalPizzas==1) {
+                            changeStateTo(UserState.ADDITIONAL_ITEM_PRICE_PROCESSING, session);
+                        } else {
+                            changeStateTo(UserState.PRICE_PROCESSING, session);
+                        }
                     } else {
                         sendMessage(chatId, "Введи корректное количество", true);
                     }
@@ -552,21 +558,32 @@ public class MyBot extends TelegramLongPollingBot {
     }
     private void sendPoll(Long chatId) {
         UserSession session = sessionMap.get(chatId);
+        List<String> options = null;
+        List<String> opts = List.of(
+                "1\uFE0F⃣ Первый",
+                "2\uFE0F⃣ Второй",
+                "3\uFE0F⃣ Третий",
+                "4\uFE0F⃣ Четвертый",
+                "5\uFE0F⃣ Пятый",
+                "6\uFE0F⃣ Шестой",
+                "7\uFE0F⃣ Седьмой",
+                "8\uFE0F⃣ Восьмой",
+                "9\uFE0F⃣ Девятый",
+                "На меня не рассчитывать");
+        if (session.totalPizzas==0) {
+            options = opts;
+        } else if (session.totalPizzas<10){
+            options = new ArrayList<>(opts.subList(0, session.totalPizzas)); // независимая копия подсписка opts.subList
+            options.add("На меня не рассчитывать");
+        } else {
+            sendMessage(chatId,"Опрос можно сделать только до 10 штук",false);
+        }
+
         SendPoll poll = SendPoll
                 .builder()
                 .chatId(chatId)
                 .question("На меня рассчитывать кальян:")
-                .options(List.of(
-                        "1\uFE0F⃣ Первый",
-                        "2\uFE0F⃣ Второй",
-                        "3\uFE0F⃣ Третий",
-                        "4\uFE0F⃣ Четвертый",
-                        "5\uFE0F⃣ Пятый",
-                        "6\uFE0F⃣ Шестой",
-                        "7\uFE0F⃣ Седьмой",
-                        "8\uFE0F⃣ Восьмой",
-                        "9\uFE0F⃣ Девятый",
-                        "На меня не рассчитывать"))
+                .options(options)
                 .isAnonymous(false)
                 .allowMultipleAnswers(true)
                 .type("")
